@@ -2,7 +2,7 @@ import hashlib
 import random
 import re
 from abc import ABC, abstractmethod
-from typing import Any, Generator
+from typing import Any, Generator, Set
 
 import numpy as np
 import pandas as pd
@@ -19,6 +19,8 @@ from skweak.base import SpanAnnotator
 from spacy import displacy
 from spacy.tokens import Doc, Span
 from transformers import PreTrainedTokenizer
+
+from helpers.text import remove_accented_characters
 
 
 class BaseNERAnnotator(SpanAnnotator, ABC):
@@ -148,24 +150,115 @@ class BaseNERAnnotator(SpanAnnotator, ABC):
         # Return the annotated document
         return doc
 
-    
-class SaltAnnotator(SpanAnnotator):
-    def __init__(self, remove_salt: bool = True):
-        super().__init__("lf_salt")
-        self.salt_list = ['21-acetato', 'aceponato', 'acetato', 'acetilsalicilato', 'adipato', 'alendronato', 'alfaoxofenilpropionato', 'alginato', 'aminossalicilato', 'antimoniato', 'arginato', 'arsenito', 'ascorbato', 'aspartato', 'axetil', 'benzoato', 'besilato', 'betacipionato', 'bicarbonato', 'bissulfato', 'bitartarato', 'borato', 'brometo', 'bromidrato', 'butilbrometo', 'caproato', 'carbonato', 'carboxilato', 'ciclossilicato', 'cipionato', 'citrato', 'clatrato', 'clavulanato', 'clonixinato', 'cloranfenicol', 'cloreto', 'cloridrato', 'colistimetato', 'cromacato', 'cromato', 'cromoglicato', 'decanoato', 'di-hidrato', 'diaspartato', 'diatrizoato', 'dicloreto', 'dicloridrato', 'difosfato', 'diidrato', 'dimaleato', 'dimesilato', 'dinitrato', 'dinitrobenzoato', 'dipropionato', 'ditosilato', 'divalproato', 'dobesilato', 'docusato', 'embonato', 'enantato', 'esilato', 'estearato', 'estolato', 'etabonato', 'etanolato', 'etexilato', 'etilsuccinato', 'fempropionato', 'fendizoato', 'fenilpropionato', 'ferededato', 'ferrocianeto', 'fluoreto', 'folinato', 'fosfatidilcolina', 'fosfato', 'fosfito', 'fumarato', 'furoato', 'fusidato', 'gadobenato', 'gadopentetato', 'glicerofosfato', 'glicinato', 'glicirrizato', 'gliconato', 'gluceptato', 'gluconato', 'glutamato', 'hemi-hidrato', 'hemifumarato', 'hemisulfato', 'hemitartarato', 'hexafluoreto', 'hialuronato', 'hiclato', 'hidrobrometo', 'hidrocloreto', 'hidrogenotartarato', 'hidroxibenzoato', 'hidroxinaftoato', 'hipofosfito', 'ibandronato', 'iodeto', 'isetionato', 'isocaproato', 'lactato', 'lactobionato', 'laurato', 'laurilsulfato', 'levolisinato', 'levomalato', 'levulinato', 'lisetil', 'lisina', 'lisinato', 'malato', 'maleato', 'mepesuccinato', 'mesilato', 'metilbrometo', 'metilsulfato', 'metotrexato', 'micofenolato', 'molibdato', 'mono-hidrato', 'monofosfato', 'mononitrato', 'mucato', 'naftoato', 'nicotinato', 'nitrato', 'nitrito', 'nitroprusseto', 'oleato', 'orotato', 'oxalato', 'oxoglurato', 'palmitato', 'pamoato', 'pantotenato', 'pantotênico', 'permanganato', 'piconato', 'picossulfato', 'pidolato', 'pivalato', 'poliestirenossulfonato', 'polissulfato', 'propilenoglicolato', 'propionato', 'racealfa-hidroxigamametiltiobutanoato', 'racealfaoxobetametilbutanoato', 'racealfaoxobetametilpentanoato', 'racealfaoxogamametilpentanoato', 'resinato', 'sacarato', 'salicilato', 'selenato', 'selenito', 'silicato', 'subacetato', 'subgalato', 'succinato', 'sulfato', 'sulfeto', 'sulfito', 'sódico', 'tanato', 'tartarato', 'teoclato', 'tetra-hidrato', 'tiocianato', 'tosilato', 'triclofenato', 'trifenatato', 'undecanoato', 'undecilato', 'undecilenato', 'valerato', 'valproato', 'xinafoato', 'zirconato', 'zíncico']
 
-        self.salt_pattern = re.compile(r'\b(?:' + '|'.join(map(re.escape, self.salt_list)) + r')\b', re.IGNORECASE)
-        self.remove_salt = remove_salt
+class OrganizacaoAnnotator(SpanAnnotator):
+    def __init__(self):
+        super().__init__("lf_organizacao")
+
+        # --- 1. Prefixos e sufixos expandidos ---
+        # Prefixos e sufixos expandidos (minúsculo, com acentos)
+        self.prefixos = set([
+            "ministério", "tribunal", "secretaria", "instituto",
+            "agência", "conselho", "departamento", "fundação",
+            "empresa", "banco", "sindicato", "federação", "ordem",
+            "partido", "caixa", "universidade", "assembleia", "congresso",
+            "comissão", "associação", "cooperativa", "coordenadoria",
+            "câmara", "instituição", "organização",
+            "autarquia", "procuradoria", "gabinete",
+            "mesa", "serviço", "subsecretaria", "ouvidoria",
+            "escritório", "corregedoria", "coordenação"
+        ])
+        # Adiciona versões sem acento
+        self.prefixos.update([remove_accented_characters(p) for p in self.prefixos])
+
+        self.sufixos = [
+            "associação", "federação", "sindicato", "universidade",
+            "empresa", "banco", "união", "ordem", "confederação",
+            "partido", "secretaria", "instituto", "agência", "fundação",
+            "comissão", "conselho", "instituição", "organização",
+            "ouvidoria", "subsecretaria", "coordenação",
+        ]
+        # Adiciona versões sem acento
+        self.sufixos = [s.lower() for s in self.sufixos]
+        self.sufixos += [remove_accented_characters(s) for s in self.sufixos]
+
+        # Regex compiladas
+        prefix_pattern = r'\b(?:' + '|'.join(map(re.escape, self.prefixos)) + r')\b'
+        sufix_pattern = r'\b(?:' + '|'.join(map(re.escape, self.sufixos)) + r')\b'
+        self.prefix_regex = re.compile(prefix_pattern)
+        self.sufix_regex = re.compile(sufix_pattern)
+
+        # Siglas
+        self.sigla_pattern = re.compile(r'^[A-Z]{2,6}$')
+        self.pontuada_sigla_pattern = re.compile(r'^([A-Z]\.){2,6}$')  # Ex: B.N.D.E.S.
+
+        # Preposições comuns
+        self.prep: Set[str] = {"do", "da", "dos", "das", "de", "e"}
+
+    def _is_valid_token_for_organization(self, token, prev_token=None):
+        """
+        Define quais tokens podem fazer parte do nome da organização
+        """
+        text = token.text
+        if text.lower() in self.prep:
+            return True
+        if text.istitle():
+            return True
+        if re.match(r"^\d+[ªº]$", text):
+            return True
+        if prev_token and prev_token.text.lower() in self.prep:
+            return True
+        return False
 
     def find_spans(self, doc):
-        for i in range(len(doc) - 2):
-            if (self.salt_pattern.match(doc[i].text) and
-                doc[i + 1].lower_ == 'de' and
-                doc[i + 2].is_alpha):
-                if self.remove_salt:
-                    yield i+2, i+3, "MEDICAMENTO"
-                else:
-                    yield i, i+3, "MEDICAMENTO"
+        i = 0
+        n = len(doc)
+
+        while i < n:
+            token = doc[i]
+
+            # --- Caso 1: Sigla pura ou pontuada ---
+            if self.sigla_pattern.match(token.text) or self.pontuada_sigla_pattern.match(token.text):
+                yield i, i + 1, "ORGANIZACAO"
+                i += 1
+                continue
+
+            # --- Caso 2: Nome seguido de (SIGLA) ---
+            if (
+                i + 2 < n and
+                doc[i+1].text == "(" and
+                self.sigla_pattern.match(doc[i+2].text)
+            ):
+                # Retrocede para capturar o nome anterior à sigla
+                j = i
+                while j > 0 and (doc[j-1].text.istitle() or doc[j-1].text.lower() in self.prep):
+                    j -= 1
+                yield j, i + 3, "ORGANIZACAO"
+                i = i + 3
+                continue
+
+            # --- Caso 3: Prefixo conhecido + sequência com preposições + palavras ---
+            if self.prefix_regex.match(token.text):
+                start = i
+                end = i + 1
+                while end < n and self._is_valid_token_for_organization(doc[end], doc[end - 1]):
+                    end += 1
+                yield start, end, "ORGANIZACAO"
+                i = end
+                continue
+
+            # --- Caso 4: Sufixo no fim do nome (lookback 2-4 tokens) ---
+            for length in range(2, 5):
+                if i - length + 1 < 0:
+                    continue
+                span_tokens = doc[i - length + 1 : i + 1]
+                if self.sufix_regex.search(span_tokens[-1].text.lower()):
+                    yield i - length + 1, i + 1, "ORGANIZACAO"
+                    i += 1
+                    break
+            else:
+                i += 1
+
 
 def render_entity_data_from_pipeline(
     text: str,
